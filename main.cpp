@@ -1,5 +1,6 @@
 #include <lazarus.h> // v0.9.0
 #include <iostream>
+#include <string>
 
 _Float32 move_light_x   = 0.0f;
 _Float32 move_light_z   = 0.0f;
@@ -88,7 +89,6 @@ int main()
 
     Lazarus::WindowManager window("Island");
     Lazarus::Shader shader_program = Lazarus::Shader();
-    std::unique_ptr<Lazarus::Shader> caustics_program = std::make_unique<Lazarus::Shader>();
     Lazarus::Transform transformer = Lazarus::Transform();
     
     window.monitorPixelOccupants();
@@ -109,28 +109,35 @@ int main()
     Lazarus::CameraManager camera_manager(default_shader);
     Lazarus::CameraManager::Camera camera = camera_manager.createPerspectiveCam();
     
-    Lazarus::MeshManager mesh_manager(default_shader);
-    Lazarus::MeshManager::Mesh terrain = mesh_manager.create3DAsset("mesh/plains.obj", "material/plains.mtl", "images/grass.png");
-    Lazarus::MeshManager::Mesh water = mesh_manager.create3DAsset("mesh/river.obj", "material/river.mtl", "images/water.png");
-    
+    transformer.translateCameraAsset(camera, 0.0, 5.0, 0.0);
+    transformer.translateLightAsset(light, 0.0f, 2.5f, 0.0f);
+
     Lazarus::WorldFX world_manager(default_shader);
     Lazarus::WorldFX::SkyBox skybox = world_manager.createSkyBox("images/pos_x.png", "images/neg_x.png", "images/neg_y.png", "images/pos_y.png", "images/pos_z.png", "images/neg_z.png");
     Lazarus::WorldFX::Fog atmosphere = world_manager.createFog(14.0, 80.0, 0.5, 0.2, 0.4, 0.6);
     
-    transformer.translateCameraAsset(camera, 0.0, 5.0, 0.0);
-    transformer.translateLightAsset(light, 0.0f, 2.5f, 0.0f);
+    Lazarus::MeshManager terrain_manager(default_shader);
+    Lazarus::MeshManager::Mesh terrain = terrain_manager.create3DAsset("mesh/plains.obj", "material/plains.mtl", "images/grass.png");
     
+    int32_t caustics_shader = shader_program.compileShaders("shaders/caustics.glsl");
+    shader_program.setActiveShader(caustics_shader);
+
+    Lazarus::MeshManager water_manager(caustics_shader);
+    Lazarus::MeshManager::Mesh water = water_manager.create3DAsset("mesh/river.obj", "material/river.mtl");
+
     window.open();
     
     while(window.isOpen)
     {
-        /*Shaders*/
-        shader_program.setActiveShader(default_shader);
         
         /*Events*/
         window.monitorEvents();
+        window.monitorElapsedUptime();
         process_event(window.keyEventCode);
         
+        /*Shaders*/
+        shader_program.setActiveShader(default_shader);
+
         /*Fog*/
         world_manager.drawSkyBox(skybox, camera);
         world_manager.loadFog(atmosphere);
@@ -140,26 +147,32 @@ int main()
         transformer.translateLightAsset(light, move_light_x, 0.0, move_light_z);
         
 		/*Camera*/
-        camera_manager.loadCamera(camera);
         transformer.translateCameraAsset(camera, move_cam_x, 0.0f, move_cam_z);
         transformer.rotateCameraAsset(camera, rotate_cam_x, rotate_cam_y, 0.0f);
+        camera_manager.loadCamera(camera);
         
         /*Mesh*/
-        mesh_manager.loadMesh(terrain);
-        mesh_manager.drawMesh(terrain);
+        terrain_manager.loadMesh(terrain);
+        terrain_manager.drawMesh(terrain);
+        
+        shader_program.setActiveShader(caustics_shader);
+        shader_program.uploadUniform("time", &window.elapsedTime);
 
-        mesh_manager.loadMesh(water);
-        mesh_manager.drawMesh(water);
+        // world_manager.loadFog(atmosphere);
+        light_manager.loadLightSource(light);
+        camera_manager.loadCamera(camera);
+        water_manager.loadMesh(water);
+        water_manager.drawMesh(water);
 
         window.presentNextFrame();
 
         uint32_t status = globals.getExecutionState();
 
-        if(status != LAZARUS_OK)
-        {
-            std::cout << "Engine status: " << status << std::endl; 
-            window.close();
-        };
+        // if(status != LAZARUS_OK)
+        // {
+        //     std::cout << "Engine status: " << status << std::endl; 
+        //     window.close();
+        // };
         
         if(quitn_time) window.close();
     };
